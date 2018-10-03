@@ -5,8 +5,8 @@ mkdir -p html
 counter=1
 while [ $counter -le 999999 ]
 do
-    counter=$(( $counter + 1 ))
-    id=`printf %06d $counter`
+    counter=$(( $counter + 1 ))    
+    id=`printf %06d $counter` # add padding zeros
     file="./html/${id}.html"
 
     # Check if file exists and is not empty
@@ -26,10 +26,11 @@ do
         | iconv -f LATIN1 -t UTF8 > $file
 
     # Break if result if not a valid movie page
-    if grep -q "<b>0</b>" "$file"; then
-        rm $file
-        break
-    fi
+    # if grep -q "<b>0</b>" "$file"; then
+    #     rm $file
+    #     break
+    # fi
+
     echo $file
     sleep 5
 done
