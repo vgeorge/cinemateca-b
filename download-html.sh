@@ -32,5 +32,5 @@ do
     # fi
 
     echo $file
-    sleep 5
+    sleep 3
 done
