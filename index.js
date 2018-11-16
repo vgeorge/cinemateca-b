@@ -45,6 +45,11 @@ const patches = {
       Roteiro: ["Paula, Francisco de", "Motta, Nelson"],
       Argumento: ["Paula, Francisco de", "Motta, Nelson"]
     }
+  },
+  "009335":{
+    "Argumento/roteiro": {
+      Roteiro: ["Cotrim, Costa"]
+    }
   }
 };
 
@@ -86,9 +91,11 @@ const sectionsInBackOrder = [
   "Data e local de lançamento",
   "Certificados",
   "Data e local de produção",
+  "Versão",
   "Material original",
   "Categorias",
-  "Outras remetências de título"
+  "Outras remetências de título",
+  "Título atribuído ao episódio"
 ];
 
 const sectionNamesWithColon = [
@@ -118,12 +125,25 @@ const dashSeparatedArray = ["Categorias"];
 
 const sourceSections = ["Fontes consultadas", "Fontes utilizadas"];
 
-const fulltextSections = ["Sinopse", "Circuito exibidor", "Certificados"];
+const fulltextSections = ["Sinopse", "Circuito exibidor", "Certificados", "Argumento/roteiro", "Título atribuído ao episódio"];
+
+function parseIdentity(line) {
+  let [person, identity] = line.split("(");
+  person = person.trim();
+  return identity
+    ? {
+        person,
+        identity: identity.replace(")", "")
+      }
+    : {
+        person
+      };
+}
 
 function parseAndRemoveSection(accumulator, sectionId) {
   let title;
   if (sectionNamesWithColon.includes(sectionId)) {
-    title = `${sectionId}:`;
+    title = `\n${sectionId}:`;
   } else {
     title = `section:${sectionId}`;
   }
@@ -166,18 +186,11 @@ function parseAndRemoveSection(accumulator, sectionId) {
     } else if (sectionId === "Narração") {
       data["Narração"] = lines;
     } else if (sectionId === "Identidades/elenco:") {
-      data["Identidades/elenco"] = lines.map(line => {
-        let [person, identity] = line.split("(");
-        person = person.trim();
-        return identity
-          ? {
-              person,
-              identity: identity.replace(")", "")
-            }
-          : {
-              person
-            };
-      });
+      data["Identidades/elenco"] = lines.map(parseIdentity);
+    } else if (sectionId === "Ator(es) Convidado(s)") {
+      data["Ator(es) Convidado(s)"] = lines.map(parseIdentity);
+    } else if (sectionId === "Participação especial") {
+      data["Participação especial"] = lines.map(parseIdentity);
     } else if (
       fulltextSections
         .concat(["Observações", "Dados adicionais de música", "Prêmios"])
