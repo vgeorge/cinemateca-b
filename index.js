@@ -1,6 +1,5 @@
-const fs = require("fs");
-const jsdom = require("jsdom");
-const { JSDOM } = jsdom;
+const fs = require("fs-extra");
+const { JSDOM } = require("jsdom");
 const yaml = require("js-yaml");
 const moment = require("moment");
 const he = require("he");
@@ -242,8 +241,8 @@ function parseSources(lines) {
   });
 }
 
-function parseFile(movieId) {
-  const data = fs.readFileSync(`./html/${movieId}.html`, "utf8");
+async function parseFile(movieId) {
+  const data = await fs.readFile(`./html/${movieId}.html`, "utf8");
 
   let page = { id: movieId, data: {} };
 
@@ -273,22 +272,32 @@ function parseFile(movieId) {
   page = sectionsInBackOrder.reduce(parseAndRemoveSection, page);
 
   const outputFilename = `./obras/${movieId}.yml`;
-  if (fs.existsSync(outputFilename)) {
-    fs.unlinkSync(outputFilename);
+  // Try to remove the file if it exists.
+  try {
+    await fs.remove(outputFilename);
+  } catch (error) {
+    // Nothing to do
   }
 
   const yamlDump = yaml.dump(page.data);
-  fs.writeFileSync(outputFilename, yamlDump);
+  await fs.writeFile(outputFilename, yamlDump);
   if (yamlDump.indexOf("section") > -1) throw new Error("Unparsed text found.");
 
   console.log(movieId);
 }
 
 async function start() {
-  let i = ID_START;
-  while (i < ID_END) {
-    parseFile(i.toString().padStart(6, "0"));
-    i++;
+  try {
+    // Ensure output dir exists.
+    await fs.ensureDir("obras");
+
+    let i = ID_START;
+    while (i < ID_END) {
+      await parseFile(i.toString().padStart(6, "0"));
+      i++;
+    }
+  } catch (error) {
+    console.log("Fatal error:", error);
   }
 }
 
