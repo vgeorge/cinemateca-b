@@ -1,11 +1,12 @@
+const path = require("path");
 const fs = require("fs-extra");
 const { JSDOM } = require("jsdom");
-const yaml = require("js-yaml");
 const moment = require("moment");
 const he = require("he");
 
 const ID_START = 1;
 const ID_END = 50000;
+const outputDir = path.join(__dirname, "films");
 
 String.prototype.replaceAll = function(search, replacement) {
   let target = this;
@@ -46,7 +47,7 @@ const patches = {
       Argumento: ["Paula, Francisco de", "Motta, Nelson"]
     }
   },
-  "009335":{
+  "009335": {
     "Argumento/roteiro": {
       Roteiro: ["Cotrim, Costa"]
     }
@@ -125,8 +126,6 @@ const dashSeparatedArray = ["Categorias"];
 
 const sourceSections = ["Fontes consultadas", "Fontes utilizadas"];
 
-const fulltextSections = ["Sinopse", "Circuito exibidor", "Certificados", "Argumento/roteiro", "Título atribuído ao episódio"];
-
 function parseIdentity(line) {
   let [person, identity] = line.split("(");
   person = person.trim();
@@ -141,96 +140,123 @@ function parseIdentity(line) {
 }
 
 function parseAndRemoveSection(accumulator, sectionId) {
-  let title;
-  if (sectionNamesWithColon.includes(sectionId)) {
-    title = `\n${sectionId}:`;
-  } else {
-    title = `section:${sectionId}`;
-  }
-
-  if (accumulator.remainingText.indexOf(title) > -1) {
-    const pageId = accumulator.id;
-    const sectionText = accumulator.remainingText.split(title).pop();
-    const remainingText = accumulator.remainingText.replace(
-      title + sectionText,
-      ""
-    );
-
-    // Check if section has patch
-    if (patches[pageId] && patches[pageId][sectionId]) {
-      return {
-        remainingText,
-        data: Object.assign({}, accumulator.data, patches[pageId])
-      };
-    }
-
-    const lines = sectionText
-      .split("\n")
-      .map(n => n.trim())
-      .filter(n => n); // discard empty lines
-
-    if (lines.length == 0)
-      return {
-        remainingText,
-        data: accumulator.data
-      };
-
-    const data = {};
-
-    if (sourceSections.includes(sectionId)) {
-      data[sectionId] = parseSources(lines);
-    } else if (onelineSections.includes(sectionId)) {
-      data[sectionId] = lines.pop();
-    } else if (sectionId === "Locação:") {
-      data["Locação"] = lines.pop();
-    } else if (sectionId === "Narração") {
-      data["Narração"] = lines;
-    } else if (sectionId === "Identidades/elenco:") {
-      data["Identidades/elenco"] = lines.map(parseIdentity);
-    } else if (sectionId === "Ator(es) Convidado(s)") {
-      data["Ator(es) Convidado(s)"] = lines.map(parseIdentity);
-    } else if (sectionId === "Participação especial") {
-      data["Participação especial"] = lines.map(parseIdentity);
-    } else if (
-      fulltextSections
-        .concat(["Observações", "Dados adicionais de música", "Prêmios"])
-        .includes(sectionId)
-    ) {
-      data[sectionId] = he.decode(lines.join("\n"));
-    } else if (
-      semicolonSeparatedArray
-        .concat("Outras remetências de título")
-        .includes(sectionId)
-    ) {
-      data[sectionId] = lines
-        .pop()
-        .split(";")
-        .map(i => i.trim());
-    } else if (commaSeparatedArray.includes(sectionId)) {
-      data[sectionId] = lines
-        .pop()
-        .split(",")
-        .map(i => i.trim());
-    } else if (dashSeparatedArray.includes(sectionId)) {
-      data[sectionId] = lines
-        .pop()
-        .split("/")
-        .map(i => i.trim());
+  const pageId = accumulator.id;
+  let lines;
+  try {
+    let sectionSeparator;
+    if (sectionNamesWithColon.includes(sectionId)) {
+      sectionSeparator = `\n${sectionId}:`;
     } else {
-      data[sectionId] = {};
-      lines.forEach(line => {
-        const [key, value] = line.split(":");
-        const entries = value.split(";").map(i => i.trim());
-        data[sectionId][key] = entries.length == 1 ? entries[0] : entries;
-      });
+      sectionSeparator = `section:${sectionId}`;
     }
-    return {
-      id: pageId,
-      remainingText,
-      data: Object.assign({}, accumulator.data, data)
-    };
-  } else {
-    return accumulator;
+
+    if (accumulator.remainingText.indexOf(sectionSeparator) > -1) {
+      const data = {};
+
+      const sectionText = accumulator.remainingText
+        .split(sectionSeparator)
+        .pop();
+
+      // Remove section from remaining text
+      const sectionStartIndex = accumulator.remainingText.lastIndexOf(
+        sectionSeparator
+      );
+      const remainingText = accumulator.remainingText.substring(
+        0,
+        sectionStartIndex
+      );
+
+      // Check if section has patch
+      if (patches[pageId] && patches[pageId][sectionId]) {
+        return {
+          remainingText,
+          data: Object.assign({}, accumulator.data, patches[pageId])
+        };
+      }
+
+      // FULL-TEXT SECTIONS
+      if (
+        [
+          "Argumento/roteiro",
+          "Canção",
+          "Certificados",
+          "Circuito exibidor",
+          "Dados adicionais de música",
+          "Observações",
+          "Prêmios",
+          "Sinopse",
+          "Título atribuído ao episódio"
+        ].includes(sectionId)
+      ) {
+        data[sectionId] = he.decode(sectionText);
+      } else {
+        // Parse section
+
+        lines = sectionText
+          .split("\n")
+          .map(n => n.trim())
+          .filter(n => n); // discard empty lines
+
+        if (lines.length == 0)
+          return {
+            remainingText,
+            data: accumulator.data
+          };
+
+        if (sourceSections.includes(sectionId)) {
+          data[sectionId] = parseSources(lines);
+        } else if (onelineSections.includes(sectionId)) {
+          data[sectionId] = lines.pop();
+        } else if (sectionId === "Locação:") {
+          data["Locação"] = lines.pop();
+        } else if (sectionId === "Narração") {
+          data["Narração"] = lines;
+        } else if (sectionId === "Identidades/elenco:") {
+          data["Identidades/elenco"] = lines.map(parseIdentity);
+        } else if (sectionId === "Ator(es) Convidado(s)") {
+          data["Ator(es) Convidado(s)"] = lines.map(parseIdentity);
+        } else if (sectionId === "Participação especial") {
+          data["Participação especial"] = lines.map(parseIdentity);
+        } else if (
+          semicolonSeparatedArray
+            .concat("Outras remetências de título")
+            .includes(sectionId)
+        ) {
+          data[sectionId] = lines
+            .pop()
+            .split(";")
+            .map(i => i.trim());
+        } else if (commaSeparatedArray.includes(sectionId)) {
+          data[sectionId] = lines
+            .pop()
+            .split(",")
+            .map(i => i.trim());
+        } else if (dashSeparatedArray.includes(sectionId)) {
+          data[sectionId] = lines
+            .pop()
+            .split("/")
+            .map(i => i.trim());
+        } else {
+          data[sectionId] = {};
+          lines.forEach(line => {
+            const [key, value] = line.split(":");
+            const entries = value.split(";").map(i => i.trim());
+            data[sectionId][key] = entries.length == 1 ? entries[0] : entries;
+          });
+        }
+      }
+
+      // Return modified accumulator
+      return {
+        id: pageId,
+        remainingText,
+        data: Object.assign({}, accumulator.data, data)
+      };
+    } else {
+      return accumulator;
+    }
+  } catch (error) {
+    throw new Error(`${pageId} (${sectionId}): ${error.message}`);
   }
 }
 
@@ -264,6 +290,11 @@ async function parseFile(movieId) {
     ".middle > form:nth-child(2) > center:nth-child(32) > table:nth-child(1) > tbody:nth-child(1) > tr:nth-child(1) > td:nth-child(2)"
   );
 
+  if (!tableNode) {
+    console.log(`${movieId}: empty`);
+    return;
+  }
+
   // MOVIE TITLE
   const titleDiv = tableNode.querySelector("div");
   if (!titleDiv) return;
@@ -284,25 +315,26 @@ async function parseFile(movieId) {
 
   page = sectionsInBackOrder.reduce(parseAndRemoveSection, page);
 
-  const outputFilename = `./obras/${movieId}.yml`;
+  const outputFilename = path.join(outputDir, `${movieId}.json`);
+
   // Try to remove the file if it exists.
   try {
     await fs.remove(outputFilename);
   } catch (error) {
     // Nothing to do
   }
+    
+  const jsonOutput = JSON.stringify(page.data, null, 2);
+  await fs.writeFile(outputFilename, jsonOutput);
 
-  const yamlDump = yaml.dump(page.data);
-  await fs.writeFile(outputFilename, yamlDump);
-  if (yamlDump.indexOf("section") > -1) throw new Error("Unparsed text found.");
 
-  console.log(movieId);
+  console.log(`${movieId}: ok`);
 }
 
 async function start() {
   try {
     // Ensure output dir exists.
-    await fs.ensureDir("obras");
+    await fs.ensureDir(outputDir);
 
     let i = ID_START;
     while (i < ID_END) {
